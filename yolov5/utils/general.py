@@ -40,7 +40,6 @@ FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
 DATASETS_DIR = ROOT.parent / 'datasets'  # YOLOv5 datasets directory
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of YOLOv5 multiprocessing threads
-AUTOINSTALL = str(os.getenv('YOLOv5_AUTOINSTALL', True)).lower() == 'true'  # global auto-install mode
 VERBOSE = str(os.getenv('YOLOv5_VERBOSE', True)).lower() == 'true'  # global verbose mode
 FONT = 'Arial.ttf'  # https://ultralytics.com/assets/Arial.ttf
 
@@ -276,7 +275,6 @@ def check_online():
 def git_describe(path=ROOT):  # path must be a directory
     # Return human-readable git description, i.e. v5.0-5-g3e25f1e https://git-scm.com/docs/git-describe
     try:
-        assert (Path(path) / '.git').is_dir()
         return check_output(f'git -C {path} describe --tags --long --always', shell=True).decode()[:-1]
     except Exception:
         return ''
@@ -321,7 +319,7 @@ def check_version(current='0.0.0', minimum='0.0.0', name='version ', pinned=Fals
 
 
 @try_except
-def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), install=True, cmds=()):
+def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), install=True):
     # Check installed dependencies meet requirements (pass *.txt file or list of packages)
     prefix = colorstr('red', 'bold', 'requirements:')
     check_python()  # check python version
@@ -334,16 +332,16 @@ def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), insta
         requirements = [x for x in requirements if x not in exclude]
 
     n = 0  # number of packages updates
-    for i, r in enumerate(requirements):
+    for r in requirements:
         try:
             pkg.require(r)
         except Exception:  # DistributionNotFound or VersionConflict if requirements not met
             s = f"{prefix} {r} not found and is required by YOLOv5"
-            if install and AUTOINSTALL:  # check environment variable
+            if install:
                 LOGGER.info(f"{s}, attempting auto-update...")
                 try:
                     assert check_online(), f"'pip install {r}' skipped (offline)"
-                    LOGGER.info(check_output(f"pip install '{r}' {cmds[i] if cmds else ''}", shell=True).decode())
+                    LOGGER.info(check_output(f"pip install '{r}'", shell=True).decode())
                     n += 1
                 except Exception as e:
                     LOGGER.warning(f'{prefix} {e}')
@@ -425,14 +423,13 @@ def check_file(file, suffix=''):
         return files[0]  # return file
 
 
-def check_font(font=FONT, progress=False):
+def check_font(font=FONT):
     # Download font to CONFIG_DIR if necessary
     font = Path(font)
-    file = CONFIG_DIR / font.name
-    if not font.exists() and not file.exists():
+    if not font.exists() and not (CONFIG_DIR / font.name).exists():
         url = "https://ultralytics.com/assets/" + font.name
-        LOGGER.info(f'Downloading {url} to {file}...')
-        torch.hub.download_url_to_file(url, str(file), progress=progress)
+        LOGGER.info(f'Downloading {url} to {CONFIG_DIR / font.name}...')
+        torch.hub.download_url_to_file(url, str(font), progress=False)
 
 
 def check_dataset(data, autodownload=True):
@@ -490,7 +487,6 @@ def check_dataset(data, autodownload=True):
             else:
                 raise Exception(emojis('Dataset not found ❌'))
 
-    check_font('Arial.ttf' if is_ascii(data['names']) else 'Arial.Unicode.ttf', progress=True)  # download fonts
     return data  # dictionary
 
 
@@ -501,32 +497,20 @@ def url2file(url):
     return file
 
 
-def download(url, dir='.', unzip=True, delete=True, curl=False, threads=1, retry=3):
+def download(url, dir='.', unzip=True, delete=True, curl=False, threads=1):
     # Multi-threaded file download and unzip function, used in data.yaml for autodownload
     def download_one(url, dir):
         # Download 1 file
-        success = True
         f = dir / Path(url).name  # filename
         if Path(url).is_file():  # exists in current path
             Path(url).rename(f)  # move to dir
         elif not f.exists():
             LOGGER.info(f'Downloading {url} to {f}...')
-            for i in range(retry + 1):
-                if curl:
-                    s = 'sS' if threads > 1 else ''  # silent
-                    r = os.system(f"curl -{s}L '{url}' -o '{f}' --retry 9 -C -")  # curl download
-                    success = r == 0
-                else:
-                    torch.hub.download_url_to_file(url, f, progress=threads == 1)  # torch download
-                    success = f.is_file()
-                if success:
-                    break
-                elif i < retry:
-                    LOGGER.warning(f'Download failure, retrying {i + 1}/{retry} {url}...')
-                else:
-                    LOGGER.warning(f'Failed to download {url}...')
-
-        if unzip and success and f.suffix in ('.zip', '.gz'):
+            if curl:
+                os.system(f"curl -L '{url}' -o '{f}' --retry 9 -C -")  # curl download, retry and resume on fail
+            else:
+                torch.hub.download_url_to_file(url, f, progress=threads == 1)  # torch download
+        if unzip and f.suffix in ('.zip', '.gz'):
             LOGGER.info(f'Unzipping {f}...')
             if f.suffix == '.zip':
                 ZipFile(f).extractall(path=dir)  # unzip
@@ -741,17 +725,24 @@ def non_max_suppression(prediction,
                         agnostic=False,
                         multi_label=False,
                         labels=(),
-                        max_det=300):
+                        max_det=300,
+                        catch_all=False,
+                        catch_all_idx=4,
+                        catch_all_thres=0.9
+                       ):
     """Non-Maximum Suppression (NMS) on inference results to reject overlapping bounding boxes
 
     Returns:
          list of detections, on (n,6) tensor per image [xyxy, conf, cls]
     """
 
+    print('testing NMS ...')
+    
+    
     bs = prediction.shape[0]  # batch size
     nc = prediction.shape[2] - 5  # number of classes
     xc = prediction[..., 4] > conf_thres  # candidates
-
+    
     # Checks
     assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
     assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
@@ -768,10 +759,13 @@ def non_max_suppression(prediction,
     t = time.time()
     output = [torch.zeros((0, 6), device=prediction.device)] * bs
     for xi, x in enumerate(prediction):  # image index, image inference
+        
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         x = x[xc[xi]]  # confidence
-
+        
+        #print(x[:, 5:].shape)
+    
         # Cat apriori labels if autolabelling
         if labels and len(labels[xi]):
             lb = labels[xi]
@@ -786,7 +780,8 @@ def non_max_suppression(prediction,
             continue
 
         # Compute conf
-        x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
+        # if not catch_all:
+        #     x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
 
         # Box (center x, center y, width, height) to (x1, y1, x2, y2)
         box = xywh2xyxy(x[:, :4])
@@ -797,7 +792,22 @@ def non_max_suppression(prediction,
             x = torch.cat((box[i], x[i, j + 5, None], j[:, None].float()), 1)
         else:  # best class only
             conf, j = x[:, 5:].max(1, keepdim=True)
-            x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
+            
+            if catch_all:   
+                # if catch_all is enabled, we will swap the class                
+                # all possible classes
+                for i_class_conf, class_conf in enumerate(x[:, 5:]):
+                    values, idx = torch.topk(class_conf, k=2, axis=-1)
+
+                    if ((idx[0] == catch_all_idx) & (values[1] > catch_all_thres)):       
+                        print("Adjusting class name")
+                        print('Previous: top 2 cls_conf', values)                    
+                        print('Previous: classes', j[i_class_conf])
+                        j[i_class_conf] = idx[1]
+                        conf[i_class_conf] = values[1]
+                        print('New: classes', j[i_class_conf])
+            
+            x = torch.cat((box, conf, j.float()), 1)#[conf.view(-1) > conf_thres]
 
         # Filter by class
         if classes is not None:
@@ -959,12 +969,13 @@ def yolov5_in_syspath():
     finally:
         sys.path.remove(yolov5_folder_dir)
 
+
 # OpenCV Chinese-friendly functions ------------------------------------------------------------------------------------
 imshow_ = cv2.imshow  # copy to avoid recursion errors
 
 
-def imread(path, flags=cv2.IMREAD_COLOR):
-    return cv2.imdecode(np.fromfile(path, np.uint8), flags)
+def imread(path):
+    return cv2.imdecode(np.fromfile(path, np.uint8), cv2.IMREAD_COLOR)
 
 
 def imwrite(path, im):
