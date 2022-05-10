@@ -17,7 +17,7 @@ Usage - formats:
                                          yolov5s.onnx               # ONNX Runtime or OpenCV DNN with --dnn
                                          yolov5s.xml                # OpenVINO
                                          yolov5s.engine             # TensorRT
-                                         yolov5s.mlmodel            # CoreML (macOS-only)
+                                         yolov5s.mlmodel            # CoreML (MacOS-only)
                                          yolov5s_saved_model        # TensorFlow SavedModel
                                          yolov5s.pb                 # TensorFlow GraphDef
                                          yolov5s.tflite             # TensorFlow Lite
@@ -34,18 +34,30 @@ import torch.backends.cudnn as cudnn
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
+
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
-from yolov5.models.common import DetectMultiBackend
-from yolov5.utils.datasets import (IMG_FORMATS, VID_FORMATS, LoadImages,
+from yolov5pip.yolov5.models.common import DetectMultiBackend
+from yolov5pip.yolov5.utils.datasets import (IMG_FORMATS, VID_FORMATS, LoadImages,
                                    LoadStreams)
-from yolov5.utils.general import (LOGGER, check_file, check_img_size,
+from yolov5pip.yolov5.utils.general import (LOGGER, check_file, check_img_size,
                                   check_imshow, check_requirements, colorstr,
                                   cv2, increment_path, non_max_suppression,
                                   print_args, scale_coords, strip_optimizer,
                                   xyxy2xywh)
-from yolov5.utils.plots import Annotator, colors, save_one_box
-from yolov5.utils.torch_utils import select_device, time_sync
+from yolov5pip.yolov5.utils.plots import Annotator, colors, save_one_box
+from yolov5pip.yolov5.utils.torch_utils import select_device, time_sync
+
+# from yolov5.models.common import DetectMultiBackend
+# from yolov5.utils.datasets import (IMG_FORMATS, VID_FORMATS, LoadImages,
+#                          LoadStreams)
+# from yolov5.utils.general import (LOGGER, check_file, check_img_size,
+#                         check_imshow, check_requirements, colorstr,
+#                         cv2, increment_path, non_max_suppression,
+#                         print_args, scale_coords, strip_optimizer,
+#                         xyxy2xywh)
+# from yolov5.utils.plots import Annotator, colors, save_one_box
+# from yolov5.utils.torch_utils import select_device, time_sync
 
 
 @torch.no_grad()
@@ -77,6 +89,9 @@ def run(
         hide_conf=False,  # hide confidences
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
+        catch_all=False,
+        catch_all_idx=4,
+        catch_all_thres=0.9
 ):
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
@@ -135,14 +150,17 @@ def run(
         dt[1] += t3 - t2
 
         # NMS
-        pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
+        pred = non_max_suppression(pred, conf_thres, iou_thres, classes, 
+                                   agnostic_nms, max_det=max_det, 
+                                   multi_label=False, 
+                                   catch_all=catch_all, catch_all_idx=catch_all_idx, catch_all_thres=catch_all_thres)        
         dt[2] += time_sync() - t3
 
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
 
         # Process predictions
-        for i, det in enumerate(pred):  # per image
+        for i, det in enumerate(pred):  # per image            
             seen += 1
             if webcam:  # batch_size >= 1
                 p, im0, frame = path[i], im0s[i].copy(), dataset.count
@@ -247,6 +265,9 @@ def parse_opt():
     parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
+    parser.add_argument('--catch-all', default=False, action='store_true', help='catch all enable option to change output class to the second highest class')
+    parser.add_argument('--catch-all-idx', type=int, default=0, help='catch all fish index')
+    parser.add_argument('--catch-all-thres', type=int, default=0.9, help='catch all fish threshold')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(vars(opt))
