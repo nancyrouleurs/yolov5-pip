@@ -37,27 +37,16 @@ ROOT = FILE.parents[0]  # YOLOv5 root directory
 
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
-from yolov5pip.yolov5.models.common import DetectMultiBackend
-from yolov5pip.yolov5.utils.datasets import (IMG_FORMATS, VID_FORMATS, LoadImages,
-                                   LoadStreams)
-from yolov5pip.yolov5.utils.general import (LOGGER, check_file, check_img_size,
-                                  check_imshow, check_requirements, colorstr,
-                                  cv2, increment_path, non_max_suppression,
-                                  print_args, scale_coords, strip_optimizer,
-                                  xyxy2xywh)
-from yolov5pip.yolov5.utils.plots import Annotator, colors, save_one_box
-from yolov5pip.yolov5.utils.torch_utils import select_device, time_sync
-
-# from yolov5.models.common import DetectMultiBackend
-# from yolov5.utils.datasets import (IMG_FORMATS, VID_FORMATS, LoadImages,
-#                          LoadStreams)
-# from yolov5.utils.general import (LOGGER, check_file, check_img_size,
-#                         check_imshow, check_requirements, colorstr,
-#                         cv2, increment_path, non_max_suppression,
-#                         print_args, scale_coords, strip_optimizer,
-#                         xyxy2xywh)
-# from yolov5.utils.plots import Annotator, colors, save_one_box
-# from yolov5.utils.torch_utils import select_device, time_sync
+from yolov5.models.common import DetectMultiBackend
+from yolov5.utils.datasets import (IMG_FORMATS, VID_FORMATS, LoadImages,
+                         LoadStreams)
+from yolov5.utils.general import (LOGGER, check_file, check_img_size,
+                        check_imshow, check_requirements, colorstr,
+                        cv2, increment_path, non_max_suppression,
+                        print_args, scale_coords, strip_optimizer,
+                        xyxy2xywh)
+from yolov5.utils.plots import Annotator, colors, save_one_box
+from yolov5.utils.torch_utils import select_device, time_sync
 
 
 @torch.no_grad()
