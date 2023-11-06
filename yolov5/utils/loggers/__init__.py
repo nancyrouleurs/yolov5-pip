@@ -3,6 +3,7 @@
 Logging utils
 """
 
+
 import os
 import warnings
 from pathlib import Path
@@ -24,7 +25,9 @@ try:
     import wandb
 
     assert hasattr(wandb, '__version__')  # verify package import not local dir
-    if pkg.parse_version(wandb.__version__) >= pkg.parse_version('0.12.2') and RANK in [0, -1]:
+    if pkg.parse_version(wandb.__version__) >= pkg.parse_version(
+        '0.12.2'
+    ) and RANK in {0, -1}:
         try:
             wandb_login_success = wandb.login(timeout=30)
         except wandb.errors.UsageError:  # known non-TTY terminal issue
@@ -84,9 +87,9 @@ class Loggers():
         self.csv = True  # always log to csv
         self.class_names = class_names
         if not mmdet_keys:
-            self.class_name_keys = ['metrics/' + name + '_mAP_50' for name in class_names]
+            self.class_name_keys = [f'metrics/{name}_mAP_50' for name in class_names]
         else:
-            self.class_name_keys = ['val/' + name + '_mAP_50' for name in class_names]
+            self.class_name_keys = [f'val/{name}_mAP_50' for name in class_names]
         self.s3_weight_folder = None if not opt.s3_upload_dir else "s3://" + str(Path(opt.s3_upload_dir.replace("s3://","")) / save_dir.name / "weights").replace(os.sep, '/')
 
         # Message
@@ -144,7 +147,12 @@ class Loggers():
                 if not self.opt.sync_bn:  # --sync known issue https://github.com/ultralytics/yolov5/issues/3754
                     with warnings.catch_warnings():
                         warnings.simplefilter('ignore')  # suppress jit trace warning
-                        self.tb.add_graph(torch.jit.trace(de_parallel(model), imgs[0:1], strict=False), [])
+                        self.tb.add_graph(
+                            torch.jit.trace(
+                                de_parallel(model), imgs[:1], strict=False
+                            ),
+                            [],
+                        )
             if ni < 3:
                 f = self.save_dir / f'train_batch{ni}.jpg'  # filename
                 Thread(target=plot_images, args=(imgs, targets, paths, f), daemon=True).start()
@@ -172,7 +180,7 @@ class Loggers():
 
     def on_fit_epoch_end(self, vals, epoch, best_fitness, fi):
         # Callback runs at the end of each fit (train+val) epoch
-        x = {k: v for k, v in zip(self.keys + self.class_name_keys, vals)}  # dict
+        x = dict(zip(self.keys + self.class_name_keys, vals))
         if self.csv:
             file = self.save_dir / 'results.csv'
             n = len(x) + 1  # number of cols
@@ -197,12 +205,11 @@ class Loggers():
             self.neptune.end_epoch()
 
     def on_model_save(self, last, epoch, final_epoch, best_fitness, fi):
-        # Callback runs on model save event
-        if self.wandb:
-            if ((epoch + 1) % self.opt.save_period == 0 and not final_epoch) and self.opt.save_period != -1:
+        if ((epoch + 1) % self.opt.save_period == 0 and not final_epoch) and self.opt.save_period != -1:
+            if self.wandb:
                 self.wandb.log_model(last.parent, self.opt, epoch, fi, best_model=best_fitness == fi)
-        if self.neptune and self.neptune.neptune_run and self.s3_weight_folder is not None:
-            if not final_epoch and best_fitness == fi:
+        if not final_epoch and best_fitness == fi:
+            if self.neptune and self.neptune.neptune_run and self.s3_weight_folder is not None:
                 self.neptune.neptune_run["weights"].track_files(self.s3_weight_folder)
 
     def on_train_end(self, last, best, plots, epoch, results):
@@ -225,22 +232,24 @@ class Loggers():
                     results_files.append(wandb.Html(str(f)))
                 else:
                     results_files.append(wandb.Image(str(f), caption=f.name))
-            self.wandb.log({k: v for k, v in zip(self.keys[3:10], results)})  # log best.pt val results
+            self.wandb.log(dict(zip(self.keys[3:10], results)))
             self.wandb.log({"Results": results_files})
             # Calling wandb.log. TODO: Refactor this into WandbLogger.log_model
             if not self.opt.evolve:
-                wandb.log_artifact(str(best if best.exists() else last),
-                                   type='model',
-                                   name='run_' + self.wandb.wandb_run.id + '_model',
-                                   aliases=['latest', 'best', 'stripped'])
+                wandb.log_artifact(
+                    str(best if best.exists() else last),
+                    type='model',
+                    name=f'run_{self.wandb.wandb_run.id}_model',
+                    aliases=['latest', 'best', 'stripped'],
+                )
             self.wandb.finish_run()
 
         if self.neptune and self.neptune.neptune_run:
             for f in files:
                 if f.suffix == ".html":
-                    self.neptune.neptune_run['Results/{}'.format(f)].upload(neptune.types.File(str(f)))
+                    self.neptune.neptune_run[f'Results/{f}'].upload(neptune.types.File(str(f)))
                 else:
-                    self.neptune.neptune_run['Results/{}'.format(f)].log(neptune.types.File(str(f)))
+                    self.neptune.neptune_run[f'Results/{f}'].log(neptune.types.File(str(f)))
 
             if self.s3_weight_folder is not None:
                 self.neptune.neptune_run["weights"].track_files(self.s3_weight_folder)

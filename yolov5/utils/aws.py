@@ -23,9 +23,7 @@ def parse_s3_uri(s3_uri):
     # parse bucket and key
     s3_components = s3_uri.split("/")
     bucket = s3_components[0]
-    s3_key = ""
-    if len(s3_components) > 1:
-        s3_key = "/".join(s3_components[1:])
+    s3_key = "/".join(s3_components[1:]) if len(s3_components) > 1 else ""
     return bucket, s3_key
 
 def upload_file_to_s3(local_file, s3_file):

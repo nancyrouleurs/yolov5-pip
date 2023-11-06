@@ -72,9 +72,14 @@ class TFConv(keras.layers.Layer):
             k,
             s,
             'SAME' if s == 1 else 'VALID',
-            use_bias=False if hasattr(w, 'bn') else True,
-            kernel_initializer=keras.initializers.Constant(w.conv.weight.permute(2, 3, 1, 0).numpy()),
-            bias_initializer='zeros' if hasattr(w, 'bn') else keras.initializers.Constant(w.conv.bias.numpy()))
+            use_bias=not hasattr(w, 'bn'),
+            kernel_initializer=keras.initializers.Constant(
+                w.conv.weight.permute(2, 3, 1, 0).numpy()
+            ),
+            bias_initializer='zeros'
+            if hasattr(w, 'bn')
+            else keras.initializers.Constant(w.conv.bias.numpy()),
+        )
         self.conv = conv if s == 1 else keras.Sequential([TFPad(autopad(k, p)), conv])
         self.bn = TFBN(w.bn) if hasattr(w, 'bn') else tf.identity
 
@@ -375,7 +380,6 @@ class TFModel:
             scores = probs * classes
             if agnostic_nms:
                 nms = AgnosticNMS()((boxes, classes, scores), topk_all, iou_thres, conf_thres)
-                return nms, x[1]
             else:
                 boxes = tf.expand_dims(boxes, 2)
                 nms = tf.image.combined_non_max_suppression(boxes,
@@ -385,8 +389,7 @@ class TFModel:
                                                             iou_thres,
                                                             conf_thres,
                                                             clip_boxes=False)
-                return nms, x[1]
-
+            return nms, x[1]
         return x[0]  # output only first tensor [1,6300,85] = [xywh, conf, class0, class1, ...]
         # x = x[0][0]  # [x(1,6300,85), ...] to x(6300,85)
         # xywh = x[..., :4]  # x(6300,4) boxes

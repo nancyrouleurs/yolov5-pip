@@ -31,11 +31,6 @@ class NeptuneLogger:
                 self.data_dict = self.setup_training(data_dict)
             prefix = colorstr('neptune: ')
             print(f"{prefix}NeptuneAI logging initiated successfully.")
-        else:
-            #prefix = colorstr('neptune: ')
-            #print(
-            #    f"{prefix}Install NeptuneAI for YOLOv5 logging with 'pip install neptune-client' (recommended)")
-            pass
 
     def track_dataset(self, opt):
         has_yolo_s3_data_dir = False

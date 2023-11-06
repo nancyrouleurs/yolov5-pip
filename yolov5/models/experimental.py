@@ -79,9 +79,7 @@ class Ensemble(nn.ModuleList):
         super().__init__()
 
     def forward(self, x, augment=False, profile=False, visualize=False):
-        y = []
-        for module in self:
-            y.append(module(x, augment, profile, visualize)[0])
+        y = [module(x, augment, profile, visualize)[0] for module in self]
         # y = torch.stack(y).max(0)[0]  # max ensemble
         # y = torch.stack(y).mean(0)  # mean ensemble
         y = torch.cat(y, 1)  # nms ensemble
@@ -116,10 +114,9 @@ def attempt_load(weights, map_location=None, inplace=True, fuse=True):
 
     if len(model) == 1:
         return model[-1]  # return model
-    else:
-        print(f'Ensemble created with {weights}\n')
-        for k in 'names', 'nc', 'yaml':
-            setattr(model, k, getattr(model[0], k))
-        model.stride = model[torch.argmax(torch.tensor([m.stride.max() for m in model])).int()].stride  # max stride
-        assert all(model[0].nc == m.nc for m in model), f'Models have different class counts: {[m.nc for m in model]}'
-        return model  # return ensemble
+    print(f'Ensemble created with {weights}\n')
+    for k in 'names', 'nc', 'yaml':
+        setattr(model, k, getattr(model[0], k))
+    model.stride = model[torch.argmax(torch.tensor([m.stride.max() for m in model])).int()].stride  # max stride
+    assert all(model[0].nc == m.nc for m in model), f'Models have different class counts: {[m.nc for m in model]}'
+    return model  # return ensemble
